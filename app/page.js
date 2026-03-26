@@ -296,22 +296,22 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 p-8 font-sans">
+    <main className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans">
       <div className="max-w-5xl mx-auto">
         
         {/* Header */}
-        <div className="text-center mb-10">
-          <h1 className="text-4xl font-extrabold text-gray-900 flex items-center justify-center gap-3 mb-2">
-            <Barcode className="w-10 h-10 text-blue-600" />
+        <div className="text-center mb-6 md:mb-10">
+          <h1 className="text-2xl md:text-4xl font-extrabold text-gray-900 flex flex-col md:flex-row items-center justify-center gap-2 md:gap-3 mb-2">
+            <Barcode className="w-8 h-8 md:w-10 md:h-10 text-blue-600" />
             Niggis Barcode Tool (Web)
           </h1>
-          <p className="text-gray-600">
+          <p className="text-sm md:text-base text-gray-600">
             Client-Side Barcode Scanner - Keine Daten verlassen deinen Browser! 🔒
           </p>
         </div>
 
         {/* Upload Section */}
-        <div className="bg-white rounded-xl shadow-sm border-2 border-dashed border-gray-300 p-10 text-center hover:border-blue-500 transition-colors cursor-pointer relative">
+        <div className="bg-white rounded-xl shadow-sm border-2 border-dashed border-gray-300 p-6 md:p-10 text-center hover:border-blue-500 transition-colors cursor-pointer relative active:bg-gray-50">
           <input 
             type="file" 
             multiple 
@@ -320,13 +320,13 @@ export default function Home() {
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             disabled={isScanning}
           />
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
-              <Upload size={32} />
+          <div className="flex flex-col items-center gap-3 md:gap-4">
+            <div className="w-12 h-12 md:w-16 md:h-16 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
+              <Upload size={24} className="md:w-8 md:h-8" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-800">Bilder hier ablegen oder klicken</h3>
-              <p className="text-sm text-gray-500">Unterstützt JPG, PNG, BMP, etc.</p>
+              <h3 className="text-base md:text-lg font-semibold text-gray-800">Bilder hier ablegen oder tippen</h3>
+              <p className="text-xs md:text-sm text-gray-500">Unterstützt JPG, PNG, BMP, etc.</p>
             </div>
           </div>
         </div>
@@ -336,24 +336,24 @@ export default function Home() {
 
         {/* Actions & Progress */}
         {images.length > 0 && (
-          <div className="mt-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex justify-between items-center mb-6">
-              <div className="text-gray-700 font-medium">
+          <div className="mt-6 md:mt-8 bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+              <div className="text-gray-700 font-medium text-sm md:text-base">
                 {images.length} Bilder geladen
               </div>
-              <div className="flex gap-3">
+              <div className="flex flex-col-reverse md:flex-row gap-2 md:gap-3 w-full md:w-auto">
                  <button 
                   onClick={clearAll}
                   disabled={isScanning}
-                  className="px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
+                  className="w-full md:w-auto px-4 py-3 md:py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 bg-gray-50 md:bg-transparent rounded-lg transition-colors text-sm font-medium"
                 >
                   Alles löschen
                 </button>
                 <button 
                   onClick={startScanning}
                   disabled={isScanning}
-                  className={`flex items-center gap-2 px-6 py-2 rounded-lg text-white font-medium transition-all ${
-                    isScanning ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg'
+                  className={`w-full md:w-auto flex items-center justify-center gap-2 px-6 py-3 md:py-2 rounded-lg text-white font-medium transition-all ${
+                    isScanning ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg active:scale-95'
                   }`}
                 >
                   {isScanning ? <Loader2 className="animate-spin" size={20} /> : <Barcode size={20} />}
@@ -457,13 +457,13 @@ export default function Home() {
 
         {/* Results & CSV */}
         {(results.length > 0 || !isScanning) && (
-          <div className="mt-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-gray-800">Ergebnisse</h2>
-               <div className="flex gap-2">
+          <div className="mt-8 bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+              <h2 className="text-xl font-bold text-gray-800 w-full md:w-auto text-center md:text-left">Ergebnisse</h2>
+               <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                     <button 
                         onClick={addResult}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg font-medium shadow-sm transition-colors"
+                        className="flex items-center justify-center gap-2 px-4 py-3 md:py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg font-medium shadow-sm transition-colors w-full sm:w-auto"
                     >
                         <Plus size={18} />
                         Hinzufügen
@@ -471,80 +471,84 @@ export default function Home() {
                     <button 
                         onClick={downloadCSV}
                         disabled={results.length === 0}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center justify-center gap-2 px-4 py-3 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
                     >
                         <Download size={18} />
-                        CSV Herunterladen
+                        CSV
                     </button>
               </div>
             </div>
             
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left text-gray-500">
-                <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 w-16">ID</th>
-                    <th className="px-6 py-3">Dateiname</th>
-                    <th className="px-6 py-3">Inhalt (Barcode)</th>
-                    <th className="px-6 py-3">Status</th>
-                    <th className="px-6 py-3 text-right">Aktionen</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.length === 0 ? (
+            <div className="overflow-x-auto -mx-4 md:mx-0">
+              <div className="min-w-full inline-block align-middle">
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
                       <tr>
-                          <td colSpan={5} className="px-6 py-8 text-center text-gray-400 italic">
-                              Noch keine Ergebnisse. Starten Sie einen Scan oder fügen Sie manuell Einträge hinzu.
-                          </td>
+                        <th scope="col" className="px-3 py-3 md:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">ID</th>
+                        <th scope="col" className="px-3 py-3 md:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider max-w-[120px] md:max-w-xs">Dateiname</th>
+                        <th scope="col" className="px-3 py-3 md:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Inhalt</th>
+                        <th scope="col" className="px-3 py-3 md:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Status</th>
+                        <th scope="col" className="px-3 py-3 md:px-6 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-16"></th>
                       </tr>
-                  ) : (
-                      results.map((row) => (
-                        <tr key={row.id} className="bg-white border-b hover:bg-gray-50 group">
-                          <td className="px-6 py-3 font-mono text-gray-400">
-                             {row.ScanID ? `#${row.ScanID}` : '-'}
-                          </td>
-                          <td className="px-6 py-3">
-                            <input 
-                                type="text" 
-                                value={row.Dateiname}
-                                onChange={(e) => updateResult(row.id, 'Dateiname', e.target.value)}
-                                className="w-full bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none px-1 py-1 transition-colors"
-                            />
-                          </td>
-                          <td className="px-6 py-3">
-                            <input 
-                                type="text" 
-                                value={row.Inhalt}
-                                onChange={(e) => updateResult(row.id, 'Inhalt', e.target.value)}
-                                className="w-full font-mono text-blue-600 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none px-1 py-1 transition-colors"
-                            />
-                          </td>
-                          <td className="px-6 py-3">
-                            {row.Status === "Gefunden" ? (
-                              <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">Gefunden</span>
-                            ) : row.Status === "Manuell" ? (
-                                <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">Manuell</span>
-                            ) : (
-                              <span className="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded">Fehler</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-3 text-right">
-                              <button 
-                                onClick={() => deleteResult(row.id)}
-                                className="text-gray-400 hover:text-red-600 p-1 rounded-full hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
-                                title="Löschen"
-                              >
-                                  <Trash2 size={18} />
-                              </button>
-                          </td>
-                        </tr>
-                      ))
-                  )}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {results.length === 0 ? (
+                          <tr>
+                              <td colSpan={5} className="px-6 py-8 text-center text-gray-400 italic text-sm">
+                                  Keine Ergebnisse.
+                              </td>
+                          </tr>
+                      ) : (
+                          results.map((row) => (
+                            <tr key={row.id} className="hover:bg-gray-50">
+                              <td className="px-3 py-3 md:px-6 text-xs text-gray-400 font-mono">
+                                {row.ScanID ? `#${row.ScanID}` : '-'}
+                              </td>
+                              <td className="px-3 py-3 md:px-6 text-sm text-gray-900 max-w-[120px] md:max-w-xs truncate">
+                                <input 
+                                    type="text" 
+                                    value={row.Dateiname}
+                                    onChange={(e) => updateResult(row.id, 'Dateiname', e.target.value)}
+                                    className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm truncate"
+                                />
+                              </td>
+                              <td className="px-3 py-3 md:px-6 text-sm text-blue-600 font-mono">
+                                <input 
+                                    type="text" 
+                                    value={row.Inhalt}
+                                    onChange={(e) => updateResult(row.id, 'Inhalt', e.target.value)}
+                                    className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-bold"
+                                />
+                              </td>
+                              <td className="px-3 py-3 md:px-6 whitespace-nowrap">
+                                {row.Status === "Gefunden" ? (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">OK</span>
+                                ) : row.Status === "Manuell" ? (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">Man</span>
+                                ) : (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">ERR</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 md:px-6 text-right whitespace-nowrap text-sm font-medium">
+                                  <button 
+                                    onClick={() => deleteResult(row.id)}
+                                    className="text-gray-400 hover:text-red-600 p-2"
+                                  >
+                                      <Trash2 size={16} />
+                                  </button>
+                              </td>
+                            </tr>
+                          ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         )}
+
       </div>
 
       {/* Image Modal */}
