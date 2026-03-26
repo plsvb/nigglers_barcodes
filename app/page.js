@@ -31,17 +31,14 @@ export default function Home() {
     setImages(prev => [...prev, ...newImages]);
   };
 
-  const scanWithTiling = async (file, detector) => {
+  const scanWithTiling = async (fileOrImage, detector) => {
       const allCodes = [];
       const uniqueTexts = new Set();
       
-      const processBitmap = async (bitmap, offsetX, offsetY) => {
+      const processSource = async (source, offsetX, offsetY) => {
           try {
-              const detected = await detector.detect(bitmap);
+              const detected = await detector.detect(source);
               detected.forEach(b => {
-                 // For now, only add if text is unique. 
-                 // If the user wants duplicates (same code appearing twice), we would need smarter spatial deduplication.
-                 // Given the "6 of 12" context, assuming unique codes or sufficiently distinct ones.
                  if (!uniqueTexts.has(b.rawValue)) {
                      uniqueTexts.add(b.rawValue);
                      allCodes.push({
@@ -61,20 +58,39 @@ export default function Home() {
       };
 
       try {
-          // 1. Full Scan
-          const fullBitmap = await createImageBitmap(file);
-          await processBitmap(fullBitmap, 0, 0);
-          
-          const w = fullBitmap.width;
-          const h = fullBitmap.height;
+          // Determine if we have a file or an image element
+          let imageSource = fileOrImage;
+          let w, h;
 
-          // If we found some codes, but maybe missed some? 
-          // Or even if we detected none, we should try tiling to be sure (high resolution files often fail full scan).
-          // Always run tiling pass for robustness.
+          // If it's a File, convert to ImageBitmap or HTMLImageElement for dimensions
+          if (fileOrImage instanceof File) {
+             try {
+                // Prefer ImageBitmap for performance if available
+                imageSource = await createImageBitmap(fileOrImage);
+                w = imageSource.width;
+                h = imageSource.height;
+             } catch (e) {
+                // Fallback to HTMLImageElement
+                const img = new Image();
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                    img.src = URL.createObjectURL(fileOrImage);
+                });
+                imageSource = img;
+                w = img.width;
+                h = img.height;
+             }
+          } else {
+             // Already an image element/bitmap
+             w = imageSource.width || imageSource.videoWidth;
+             h = imageSource.height || imageSource.videoHeight;
+          }
+
+          // 1. Full Scan
+          await processSource(imageSource, 0, 0);
           
-          // Strategy: 4 quadrants + 1 center tile (to cover cross-quadrant codes)
-          // Overlap is good.
-          
+          // 2. Tiled Scan (Robustness)
           const tiles = [
               { x: 0, y: 0, w: w * 0.6, h: h * 0.6 }, // Top-Left
               { x: w * 0.4, y: 0, w: w * 0.6, h: h * 0.6 }, // Top-Right
@@ -83,77 +99,30 @@ export default function Home() {
               { x: w * 0.2, y: h * 0.2, w: w * 0.6, h: h * 0.6 } // Center
           ];
 
+          // We need a canvas to crop (createImageBitmap clipping is flaky on some browsers)
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
           for (const tile of tiles) {
-               // createImageBitmap with cropping: (image, sx, sy, sw, sh)
-               // Note: createBitmap clipping needs integer values
+               canvas.width = tile.w;
+               canvas.height = tile.h;
+               ctx.drawImage(imageSource, tile.x, tile.y, tile.w, tile.h, 0, 0, tile.w, tile.h);
+               
+               // Some detectors accept canvas directly
                try {
-                   const tileBitmap = await createImageBitmap(file, Math.floor(tile.x), Math.floor(tile.y), Math.floor(tile.w), Math.floor(tile.h));
-                   await processBitmap(tileBitmap, tile.x, tile.y);
-                   tileBitmap.close(); // clean up
+                   await processSource(canvas, tile.x, tile.y);
                } catch (err) {
-                   console.warn("Could not create tile bitmap", err);
+                   console.warn("Could not process tile", err);
                }
           }
           
-          fullBitmap.close();
+          if (imageSource.close) imageSource.close(); // Clean up bitmap if used
 
       } catch (e) {
           console.error("Advanced scan error", e);
       }
 
       return allCodes;
-  };
-
-  // Helper to resize image if too large (helps with mobile memory limits & format issues)
-  const resizeImage = (file) => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const MAX_DIMENSION = 2000; // Limit to 2k px
-        let w = img.width;
-        let h = img.height;
-        
-        if (w <= MAX_DIMENSION && h <= MAX_DIMENSION) {
-          resolve(file); // No resize needed
-          return;
-        }
-
-        if (w > h) {
-          if (w > MAX_DIMENSION) {
-            h *= MAX_DIMENSION / w;
-            w = MAX_DIMENSION;
-          }
-        } else {
-          if (h > MAX_DIMENSION) {
-            w *= MAX_DIMENSION / h;
-            h = MAX_DIMENSION;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, w, h);
-        
-        canvas.toBlob((blob) => {
-          if (!blob) resolve(file); // Fallback
-          else {
-              const resizedFile = new File([blob], file.name, { type: 'image/jpeg' });
-              resolve(resizedFile);
-          }
-        }, 'image/jpeg', 0.85); // Convert to consistent JPEG
-      };
-      
-      img.onerror = () => resolve(file); // Return original on err
-      
-      // Handle ObjectURL creation safely
-      try {
-          img.src = URL.createObjectURL(file);
-      } catch (e) {
-          resolve(file);
-      }
-    });
   };
 
   const startScanning = async () => {
@@ -188,28 +157,25 @@ export default function Home() {
         let imgWidth = 0;
         let imgHeight = 0;
         
-        // PRE-PROCESSING: Resize image for better mobile performance
-        // This solves issues with 12MP+ photos crashing mobile browsers or confusing scanners
-        const processedFile = await resizeImage(imgObj.file);
-
         // Attempt 1: Native BarcodeDetector (with Tiling for multiple barcodes)
         // Works great on Android Chrome, macOS, Windows
         if ('BarcodeDetector' in window) {
            try {
-             // Create reusable bitmap from processed file
-             // Use createImageBitmap if available, else skip native check fallbacks
-             const bmp = await createImageBitmap(processedFile);
-             imgWidth = bmp.width;
-             imgHeight = bmp.height;
-             
              const formats = await window.BarcodeDetector.getSupportedFormats();
              if (formats && formats.length > 0) {
                  const detector = new window.BarcodeDetector({ formats });
-                 // Run Advanced Tiled Scan
-                 codes = await scanWithTiling(processedFile, detector);
+                 // Run Advanced Tiled Scan w/ Original File
+                 codes = await scanWithTiling(imgObj.file, detector);
+                 
+                 // Get dimensions if we succeeded (scanWithTiling handles loading internally but doesn't return size)
+                 if (codes.length > 0) {
+                     // Quick check size
+                     const bmp = await createImageBitmap(imgObj.file);
+                     imgWidth = bmp.width;
+                     imgHeight = bmp.height;
+                     bmp.close();
+                 }
              }
-             
-             bmp.close();
            } catch (e) {
              console.warn("Native BarcodeDetector failed, falling back", e);
            }
@@ -220,15 +186,15 @@ export default function Home() {
         if (codes.length === 0) {
              if (!html5QrCode) html5QrCode = new Html5Qrcode("reader-hidden");
              try {
-                // Use the resized file!
-                const result = await html5QrCode.scanFile(processedFile, false);
+                // Use original file
+                const result = await html5QrCode.scanFile(imgObj.file, false);
                 
-                // Get dimensions if we missed them (e.g. on iOS where Native path skipped entirely)
+                // Get dimensions if we missed them
                 if (imgWidth === 0) {
                    const img = new Image();
-                   await new Promise(r => {
-                       img.onload = r;
-                       img.src = URL.createObjectURL(processedFile);
+                   await new Promise((resolve) => {
+                       img.onload = resolve;
+                       img.src = URL.createObjectURL(imgObj.file);
                    });
                    imgWidth = img.width;
                    imgHeight = img.height;
@@ -239,10 +205,10 @@ export default function Home() {
                 if (imgWidth === 0) {
                    try {
                      const img = new Image();
-                     await new Promise(r => {
-                          img.onload = r; 
-                          img.onerror = r;
-                          img.src = URL.createObjectURL(processedFile);
+                     await new Promise((resolve) => {
+                          img.onload = resolve; 
+                          img.onerror = resolve;
+                          img.src = URL.createObjectURL(imgObj.file);
                      });
                      if (img.width) { imgWidth = img.width; imgHeight = img.height; }
                    } catch(err) {} 
@@ -303,6 +269,7 @@ export default function Home() {
 
       setProgress(((i + 1) / images.length) * 100);
     }
+
 
 
     setResults(prev => [...prev, ...newResults]);
