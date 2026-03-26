@@ -38,6 +38,12 @@ const translations = {
     manualFileName: 'Manuell',
     noBarcodeFound: 'Kein Barcode gefunden',
     modalFound: 'Barcodes gefunden',
+    viewError: 'Fehler ansehen',
+    errorTitle: 'Fehlerdetails',
+    errorDescription: 'Zu diesem Eintrag konnten keine Codes erkannt werden.',
+    errorMessage: 'Meldung',
+    openImagePreview: 'Bildvorschau oeffnen',
+    close: 'Schliessen',
   },
   en: {
     appTitle: 'Barcode Scan Tool',
@@ -71,6 +77,12 @@ const translations = {
     manualFileName: 'Manual',
     noBarcodeFound: 'No barcode found',
     modalFound: 'barcodes found',
+    viewError: 'View error',
+    errorTitle: 'Error details',
+    errorDescription: 'No codes could be detected for this entry.',
+    errorMessage: 'Message',
+    openImagePreview: 'Open image preview',
+    close: 'Close',
   }
 };
 
@@ -351,10 +363,12 @@ export default function Home() {
         updateImageStatus(imgObj.id, { status: 'failed' });
         newResults.push({
           id: Math.random().toString(36).substr(2, 9),
+          ImageID: imgObj.id,
           Dateiname: imgObj.file.name,
           Inhalt: "-",
           Typ: "-",
-          Status: t.noBarcodeFound
+          Status: t.noBarcodeFound,
+          ErrorDetails: err instanceof Error ? err.message : String(err)
         });
       }
 
@@ -414,7 +428,7 @@ export default function Home() {
   };
 
   const exportResults = async (format = exportFormat) => {
-    const dataToExport = results.map(({ id, ImageID, ...rest }) => rest);
+    const dataToExport = results.map(({ id, ImageID, ErrorDetails, ...rest }) => rest);
 
     if (dataToExport.length === 0) return;
 
@@ -442,6 +456,14 @@ export default function Home() {
 
 
   const exportLabel = exportFormat.toUpperCase();
+
+  const openErrorDetails = (row) => {
+    const relatedImage = row.ImageID ? images.find(image => image.id === row.ImageID) : null;
+    setErrorDetails({
+      row,
+      image: relatedImage || null,
+    });
+  };
 
   const clearAll = () => {
     setImages([]);
@@ -738,6 +760,15 @@ export default function Home() {
                                 )}
                               </td>
                               <td className="px-3 py-3 md:px-6 text-right whitespace-nowrap text-sm font-medium">
+                                  {row.ErrorDetails && (
+                                    <button 
+                                      onClick={() => openErrorDetails(row)}
+                                      className="text-gray-400 hover:text-blue-600 p-2"
+                                      title={t.viewError}
+                                    >
+                                      <ZoomIn size={16} />
+                                    </button>
+                                  )}
                                   <button 
                                     onClick={() => deleteResult(row.id)}
                                     className="text-gray-400 hover:text-red-600 p-2"
@@ -818,6 +849,51 @@ export default function Home() {
                    </div>
                </div>
             </div>
+        </div>
+      )}
+
+      {errorDetails && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm sm:items-center" onClick={() => setErrorDetails(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between border-b border-gray-100 p-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{t.errorTitle}</h3>
+                <p className="mt-1 text-sm text-gray-500">{t.errorDescription}</p>
+              </div>
+              <button
+                onClick={() => setErrorDetails(null)}
+                className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                title={t.close}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-4">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{t.tableFileName}</p>
+                <p className="mt-1 break-words text-sm text-gray-800">{errorDetails.row.Dateiname}</p>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{t.errorMessage}</p>
+                <p className="mt-1 rounded-xl bg-red-50 p-3 text-sm text-red-700">{errorDetails.row.ErrorDetails}</p>
+              </div>
+
+              {errorDetails.image && (
+                <button
+                  onClick={() => {
+                    setPreviewImage(errorDetails.image);
+                    setErrorDetails(null);
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                  <ZoomIn size={16} />
+                  {t.openImagePreview}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </main>
