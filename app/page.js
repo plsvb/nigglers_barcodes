@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import Papa from 'papaparse';
+import heic2any from 'heic2any'; // Import for HEIC conversion
 import { Upload, Download, Loader2, CheckCircle, XCircle, Barcode, Trash2, Plus, ZoomIn, X } from 'lucide-react';
 
 export default function Home() {
@@ -125,31 +126,52 @@ export default function Home() {
       return allCodes;
   };
 
+  /**
+   * Pre-process file to handle HEIC images for mobile compatibility.
+   * Converts HEIC to JPEG blob if detected.
+   */
+  const preProcessFile = async (file) => {
+      // Check if file is HEIC
+      if (file.type === "image/heic" || file.type === "image/heif" || file.name.toLowerCase().endsWith('.heic')) {
+          try {
+              console.log(`Converting HEIC: ${file.name}`);
+              const convertedBlob = await heic2any({
+                  blob: file,
+                  toType: "image/jpeg",
+                  quality: 0.9
+              });
+              
+              // heic2any can return a single blob or array of blobs (for live photos)
+              // We take the first one if array
+              const finalBlob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+              
+              return new File([finalBlob], file.name.replace(/\.heic$/i, ".jpg"), { 
+                  type: "image/jpeg" 
+              });
+          } catch (e) {
+              console.error("HEIC conversion failed", e);
+              // Fallback to original if conversion fails
+              return file;
+          }
+      }
+      return file;
+  };
+
   const startScanning = async () => {
     setIsScanning(true);
     setProgress(0);
     const newResults = [];
-
-    // Initialize scanner
-    // Note: Html5Qrcode needs an element ID, but for file scanning we don't necessarily need to render it to DOM
-    // However, the library might require a temporary element.
-    let html5QrCode;
-    try {
-        html5QrCode = new Html5Qrcode("reader-hidden");
-    } catch (e) {
-        console.error("Error initializing Html5Qrcode", e);
-    }
     
-    // Continue ID numbering from previous scans
+    // ... scanner initialization ...
+    let html5QrCode;
+    try { html5QrCode = new Html5Qrcode("reader-hidden"); } catch (e) {}
+    
     let globalIdCounter = results.reduce((max, r) => Math.max(max, parseInt(r.ScanID) || 0), 0);
 
     for (let i = 0; i < images.length; i++) {
       const imgObj = images[i];
-      
-      // Skip already processed images
       if (imgObj.status === 'success' || imgObj.status === 'failed') continue;
 
-      // Update status to scanning
       updateImageStatus(imgObj.id, { status: 'scanning' });
 
       try {
@@ -157,84 +179,77 @@ export default function Home() {
         let imgWidth = 0;
         let imgHeight = 0;
         
-        // Attempt 1: Native BarcodeDetector (with Tiling for multiple barcodes)
-        // Works great on Android Chrome, macOS, Windows
+        // 1. Pre-process for HEIC support
+        const processingFile = await preProcessFile(imgObj.file);
+
+        // Attempt 1: Native BarcodeDetector
         if ('BarcodeDetector' in window) {
            try {
+             // ... logic from before ...
              const formats = await window.BarcodeDetector.getSupportedFormats();
              if (formats && formats.length > 0) {
                  const detector = new window.BarcodeDetector({ formats });
-                 // Run Advanced Tiled Scan w/ Original File
-                 codes = await scanWithTiling(imgObj.file, detector);
+                 codes = await scanWithTiling(processingFile, detector);
                  
-                 // Get dimensions if we succeeded (scanWithTiling handles loading internally but doesn't return size)
                  if (codes.length > 0) {
-                     // Quick check size
-                     const bmp = await createImageBitmap(imgObj.file);
+                     // Get dimensions
+                     const bmp = await createImageBitmap(processingFile);
                      imgWidth = bmp.width;
                      imgHeight = bmp.height;
                      bmp.close();
                  }
              }
-           } catch (e) {
-             console.warn("Native BarcodeDetector failed, falling back", e);
-           }
+           } catch (e) { console.warn("Native fallack", e); }
         }
 
         // Attempt 2: Fallback to html5-qrcode
-        // Crucial for iOS/Safari and Firefox
         if (codes.length === 0) {
              if (!html5QrCode) html5QrCode = new Html5Qrcode("reader-hidden");
              try {
-                // Use original file
-                const result = await html5QrCode.scanFile(imgObj.file, false);
+                // Use the PROCESSED file (JPEG instead of HEIC)
+                const result = await html5QrCode.scanFile(processingFile, false);
                 
-                // Get dimensions if we missed them
                 if (imgWidth === 0) {
                    const img = new Image();
                    await new Promise((resolve) => {
                        img.onload = resolve;
-                       img.src = URL.createObjectURL(imgObj.file);
+                       img.src = URL.createObjectURL(processingFile);
                    });
                    imgWidth = img.width;
                    imgHeight = img.height;
                 }
                 codes = [{ text: result, box: null }];
              } catch (e) {
-                // Last ditch effort to just get dimensions for "No Code Found" display state
+                // Last ditch effort for dimensions
                 if (imgWidth === 0) {
                    try {
                      const img = new Image();
                      await new Promise((resolve) => {
                           img.onload = resolve; 
                           img.onerror = resolve;
-                          img.src = URL.createObjectURL(imgObj.file);
+                          img.src = URL.createObjectURL(processingFile);
                      });
                      if (img.width) { imgWidth = img.width; imgHeight = img.height; }
                    } catch(err) {} 
                 }
-                // If really nothing found, re-throw to be caught by outer block
                 if (codes.length === 0) throw e; 
              }
         }
         
         if (codes.length === 0) throw new Error("No code found");
 
-        // Sort by Y position (Top to Bottom)
-        // If box is present, use box.y, otherwise fallback to index order (stable)
+        // Sort results
         codes.sort((a, b) => {
             if (a.box && b.box) return a.box.y - b.box.y;
             return 0;
         });
 
-        // Assign IDs globally continuing from previous images
+        // Assign IDs
         codes = codes.map((c) => {
              globalIdCounter++;
              return { ...c, id: globalIdCounter };
         });
 
-        console.log(`Scanned ${imgObj.file.name}:`, codes);
-        
         updateImageStatus(imgObj.id, { 
             status: 'success', 
             result: `${codes.length} Codes gefunden`,
@@ -246,7 +261,7 @@ export default function Home() {
         codes.forEach(code => {
             newResults.push({
               id: Math.random().toString(36).substr(2, 9),
-              ImageID: imgObj.id, // Store source image ID for easy deletion
+              ImageID: imgObj.id,
               ScanID: code.id,
               Dateiname: imgObj.file.name,
               Inhalt: code.text,
@@ -496,7 +511,7 @@ export default function Home() {
         {/* Results & CSV */}
         {(results.length > 0 || !isScanning) && (
           <div className="mt-8 bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-3">
               <h2 className="text-xl font-bold text-gray-800 w-full md:w-auto text-center md:text-left">Ergebnisse</h2>
                <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                     <button 
@@ -515,6 +530,16 @@ export default function Home() {
                         CSV
                     </button>
               </div>
+            </div>
+
+            {/* Info Box */}
+            <div className="mb-6 bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-800 flex flex-col gap-1">
+                <p><strong>💡 Tipp:</strong> Prüfe kurz die Bilder (einfach anklicken), ob alle Codes erkannt wurden.</p>
+                <ul className="list-disc list-inside opacity-80 pl-1 text-xs md:text-sm">
+                    <li>Du kannst Dateinamen und Barcode-Inhalte in der Tabelle direkt bearbeiten.</li>
+                    <li>Fehlende Codes kannst du über "Hinzufügen" manuell ergänzen.</li>
+                    <li>Falsche Einträge lassen sich über das Mülleimer-Icon löschen.</li>
+                </ul>
             </div>
             
             <div className="overflow-x-auto -mx-4 md:mx-0">
