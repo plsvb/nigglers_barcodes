@@ -104,6 +104,58 @@ export default function Home() {
       return allCodes;
   };
 
+  // Helper to resize image if too large (helps with mobile memory limits & format issues)
+  const resizeImage = (file) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_DIMENSION = 2000; // Limit to 2k px
+        let w = img.width;
+        let h = img.height;
+        
+        if (w <= MAX_DIMENSION && h <= MAX_DIMENSION) {
+          resolve(file); // No resize needed
+          return;
+        }
+
+        if (w > h) {
+          if (w > MAX_DIMENSION) {
+            h *= MAX_DIMENSION / w;
+            w = MAX_DIMENSION;
+          }
+        } else {
+          if (h > MAX_DIMENSION) {
+            w *= MAX_DIMENSION / h;
+            h = MAX_DIMENSION;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        
+        canvas.toBlob((blob) => {
+          if (!blob) resolve(file); // Fallback
+          else {
+              const resizedFile = new File([blob], file.name, { type: 'image/jpeg' });
+              resolve(resizedFile);
+          }
+        }, 'image/jpeg', 0.85); // Convert to consistent JPEG
+      };
+      
+      img.onerror = () => resolve(file); // Return original on err
+      
+      // Handle ObjectURL creation safely
+      try {
+          img.src = URL.createObjectURL(file);
+      } catch (e) {
+          resolve(file);
+      }
+    });
+  };
+
   const startScanning = async () => {
     setIsScanning(true);
     setProgress(0);
@@ -136,48 +188,66 @@ export default function Home() {
         let imgWidth = 0;
         let imgHeight = 0;
         
+        // PRE-PROCESSING: Resize image for better mobile performance
+        // This solves issues with 12MP+ photos crashing mobile browsers or confusing scanners
+        const processedFile = await resizeImage(imgObj.file);
+
         // Attempt 1: Native BarcodeDetector (with Tiling for multiple barcodes)
+        // Works great on Android Chrome, macOS, Windows
         if ('BarcodeDetector' in window) {
            try {
-             const formats = await window.BarcodeDetector.getSupportedFormats();
-             const detector = new window.BarcodeDetector({ formats });
-             
-             // Get dimensions first
-             const bmp = await createImageBitmap(imgObj.file);
+             // Create reusable bitmap from processed file
+             // Use createImageBitmap if available, else skip native check fallbacks
+             const bmp = await createImageBitmap(processedFile);
              imgWidth = bmp.width;
              imgHeight = bmp.height;
+             
+             const formats = await window.BarcodeDetector.getSupportedFormats();
+             if (formats && formats.length > 0) {
+                 const detector = new window.BarcodeDetector({ formats });
+                 // Run Advanced Tiled Scan
+                 codes = await scanWithTiling(processedFile, detector);
+             }
+             
              bmp.close();
-
-             // Run Advanced Tiled Scan
-             codes = await scanWithTiling(imgObj.file, detector);
-
            } catch (e) {
              console.warn("Native BarcodeDetector failed, falling back", e);
            }
         }
 
         // Attempt 2: Fallback to html5-qrcode
+        // Crucial for iOS/Safari and Firefox
         if (codes.length === 0) {
              if (!html5QrCode) html5QrCode = new Html5Qrcode("reader-hidden");
              try {
-                const result = await html5QrCode.scanFile(imgObj.file, false);
-                // html5-qrcode standard scanFile doesn't return size/box easily here
-                // We'll try to get dimensions just for the record if we didn't already
+                // Use the resized file!
+                const result = await html5QrCode.scanFile(processedFile, false);
+                
+                // Get dimensions if we missed them (e.g. on iOS where Native path skipped entirely)
                 if (imgWidth === 0) {
-                    const bmp = await createImageBitmap(imgObj.file);
-                    imgWidth = bmp.width;
-                    imgHeight = bmp.height;
+                   const img = new Image();
+                   await new Promise(r => {
+                       img.onload = r;
+                       img.src = URL.createObjectURL(processedFile);
+                   });
+                   imgWidth = img.width;
+                   imgHeight = img.height;
                 }
                 codes = [{ text: result, box: null }];
              } catch (e) {
-                if (codes.length === 0 && imgWidth === 0) {
-                   // Try to just get dimensions even if scan failed, for consistency
+                // Last ditch effort to just get dimensions for "No Code Found" display state
+                if (imgWidth === 0) {
                    try {
-                     const bmp = await createImageBitmap(imgObj.file);
-                     imgWidth = bmp.width;
-                     imgHeight = bmp.height;
+                     const img = new Image();
+                     await new Promise(r => {
+                          img.onload = r; 
+                          img.onerror = r;
+                          img.src = URL.createObjectURL(processedFile);
+                     });
+                     if (img.width) { imgWidth = img.width; imgHeight = img.height; }
                    } catch(err) {} 
                 }
+                // If really nothing found, re-throw to be caught by outer block
                 if (codes.length === 0) throw e; 
              }
         }
@@ -233,6 +303,7 @@ export default function Home() {
 
       setProgress(((i + 1) / images.length) * 100);
     }
+
 
     setResults(prev => [...prev, ...newResults]);
     setIsScanning(false);
