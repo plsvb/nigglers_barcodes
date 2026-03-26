@@ -41,6 +41,10 @@ const translations = {
     errorTitle: 'Fehlerdetails',
     errorDescription: 'Zu diesem Eintrag konnten keine Codes erkannt werden.',
     errorMessage: 'Meldung',
+    diagnosticTitle: 'Diagnose',
+    diagnosticBrowser: 'Browser',
+    diagnosticPath: 'Scan-Pfad',
+    diagnosticAttempts: 'Versuche',
     openImagePreview: 'Bildvorschau oeffnen',
     close: 'Schliessen',
   },
@@ -79,6 +83,10 @@ const translations = {
     errorTitle: 'Error details',
     errorDescription: 'No codes could be detected for this entry.',
     errorMessage: 'Message',
+    diagnosticTitle: 'Diagnostics',
+    diagnosticBrowser: 'Browser',
+    diagnosticPath: 'Scan path',
+    diagnosticAttempts: 'Attempts',
     openImagePreview: 'Open image preview',
     close: 'Close',
   }
@@ -320,7 +328,25 @@ export default function Home() {
     return variants;
   };
 
+  const getBrowserLabel = () => {
+    if (typeof navigator === 'undefined') return 'Unknown';
+
+    const userAgent = navigator.userAgent;
+
+    if (userAgent.includes('Edg/')) return 'Edge';
+    if (userAgent.includes('Chrome/') && !userAgent.includes('Edg/')) return 'Chrome';
+    if (userAgent.includes('Firefox/')) return 'Firefox';
+    if (userAgent.includes('Safari/') && !userAgent.includes('Chrome/')) return 'Safari';
+
+    return navigator.userAgent;
+  };
+
   const scanFileWithFallbacks = async (file, scanner) => {
+    const diagnostics = {
+      path: 'html5-qrcode',
+      attempts: ['html5-qrcode: direct file scan'],
+    };
+
     try {
       const directResult = await scanner.scanFile(file, false);
       const image = await loadImageElement(file);
@@ -329,25 +355,80 @@ export default function Home() {
         codes: [{ text: directResult, box: null }],
         width: image.width,
         height: image.height,
+        diagnostics: {
+          ...diagnostics,
+          successPath: 'html5-qrcode: direct file scan',
+        },
       };
     } catch (directError) {
+      diagnostics.attempts.push(`html5-qrcode: direct scan failed (${directError?.message || directError})`);
       const variants = await createRotatedFileVariants(file);
 
       for (const variant of variants) {
         try {
+          diagnostics.attempts.push(`html5-qrcode: rotated ${variant.rotation}deg scan`);
           const rotatedResult = await scanner.scanFile(variant.file, false);
           return {
             codes: [{ text: rotatedResult, box: null }],
             width: variant.width,
             height: variant.height,
+            diagnostics: {
+              ...diagnostics,
+              successPath: `html5-qrcode: rotated ${variant.rotation}deg scan`,
+            },
           };
         } catch (variantError) {
+          diagnostics.attempts.push(`html5-qrcode: rotated ${variant.rotation}deg failed (${variantError?.message || variantError})`);
           console.warn(`Rotation ${variant.rotation} scan failed`, variantError);
         }
       }
 
+      directError.scanDiagnostics = diagnostics;
       throw directError;
     }
+  };
+
+  const sortCodesByReadingOrder = (codes) => {
+    const codesWithBoxes = codes.filter((code) => code.box);
+    const codesWithoutBoxes = codes.filter((code) => !code.box);
+
+    if (codesWithBoxes.length <= 1) {
+      return [...codesWithBoxes, ...codesWithoutBoxes];
+    }
+
+    const averageHeight = codesWithBoxes.reduce((sum, code) => sum + code.box.height, 0) / codesWithBoxes.length;
+    const rowThreshold = Math.max(averageHeight * 0.6, 24);
+
+    const sortedByTop = [...codesWithBoxes].sort((left, right) => {
+      if (left.box.y !== right.box.y) return left.box.y - right.box.y;
+      return left.box.x - right.box.x;
+    });
+
+    const rows = [];
+
+    sortedByTop.forEach((code) => {
+      const centerY = code.box.y + (code.box.height / 2);
+      const existingRow = rows.find((row) => Math.abs(row.centerY - centerY) <= rowThreshold);
+
+      if (existingRow) {
+        existingRow.codes.push(code);
+        const centers = existingRow.codes.map((rowCode) => rowCode.box.y + (rowCode.box.height / 2));
+        existingRow.centerY = centers.reduce((sum, value) => sum + value, 0) / centers.length;
+        return;
+      }
+
+      rows.push({ centerY, codes: [code] });
+    });
+
+    const orderedCodes = rows
+      .sort((left, right) => left.centerY - right.centerY)
+      .flatMap((row) => row.codes.sort((left, right) => {
+        const leftCenterX = left.box.x + (left.box.width / 2);
+        const rightCenterX = right.box.x + (right.box.width / 2);
+        return leftCenterX - rightCenterX;
+      }));
+
+    return [...orderedCodes, ...codesWithoutBoxes];
   };
 
   const startScanning = async () => {
@@ -371,6 +452,11 @@ export default function Home() {
         let codes = [];
         let imgWidth = 0;
         let imgHeight = 0;
+        const scanDiagnostics = {
+          browser: getBrowserLabel(),
+          path: 'unknown',
+          attempts: [],
+        };
         
         // 1. Pre-process for HEIC support
         const processingFile = await preProcessFile(imgObj.file);
@@ -380,19 +466,29 @@ export default function Home() {
            try {
              // ... logic from before ...
              const formats = await window.BarcodeDetector.getSupportedFormats();
+             scanDiagnostics.attempts.push(`native barcode detector available (${formats.length} formats)`);
              if (formats && formats.length > 0) {
                  const detector = new window.BarcodeDetector({ formats });
                  codes = await scanWithTiling(processingFile, detector);
                  
                  if (codes.length > 0) {
+                     scanDiagnostics.path = 'native-barcode-detector';
+                     scanDiagnostics.attempts.push(`native barcode detector succeeded with ${codes.length} code(s)`);
                      // Get dimensions
                      const bmp = await createImageBitmap(processingFile);
                      imgWidth = bmp.width;
                      imgHeight = bmp.height;
                      bmp.close();
+                 } else {
+                     scanDiagnostics.attempts.push('native barcode detector found no codes');
                  }
              }
-           } catch (e) { console.warn("Native fallack", e); }
+           } catch (e) {
+             scanDiagnostics.attempts.push(`native barcode detector failed (${e?.message || e})`);
+             console.warn("Native fallack", e);
+           }
+        } else {
+          scanDiagnostics.attempts.push('native barcode detector unavailable');
         }
 
         // Attempt 2: Fallback to html5-qrcode
@@ -403,7 +499,15 @@ export default function Home() {
                codes = fallbackResult.codes;
                imgWidth = fallbackResult.width;
                imgHeight = fallbackResult.height;
+               scanDiagnostics.path = fallbackResult.diagnostics.successPath || 'html5-qrcode';
+               scanDiagnostics.attempts.push(...fallbackResult.diagnostics.attempts);
              } catch (e) {
+                scanDiagnostics.path = 'html5-qrcode';
+                if (e.scanDiagnostics?.attempts) {
+                  scanDiagnostics.attempts.push(...e.scanDiagnostics.attempts);
+                } else {
+                  scanDiagnostics.attempts.push(`html5-qrcode failed (${e?.message || e})`);
+                }
                 // Last ditch effort for dimensions
                 if (imgWidth === 0) {
                    try {
@@ -422,11 +526,8 @@ export default function Home() {
         
         if (codes.length === 0) throw new Error("No code found");
 
-        // Sort results
-        codes.sort((a, b) => {
-            if (a.box && b.box) return a.box.y - b.box.y;
-            return 0;
-        });
+        // Sort results in reading order so ID labels match the table order.
+        codes = sortCodesByReadingOrder(codes);
 
         // Assign IDs
         codes = codes.map((c) => {
@@ -450,12 +551,18 @@ export default function Home() {
               Dateiname: imgObj.file.name,
               Inhalt: code.text,
               Typ: "Barcode/QR", 
-              Status: "Gefunden"
+              Status: "Gefunden",
+              ScanDiagnostics: scanDiagnostics
             });
         });
 
       } catch (err) {
         console.warn(`Error scanning ${imgObj.file.name}:`, err);
+        const failedDiagnostics = err.scanDiagnostics || {
+          browser: getBrowserLabel(),
+          path: 'unknown',
+          attempts: [err instanceof Error ? err.message : String(err)],
+        };
         updateImageStatus(imgObj.id, { status: 'failed' });
         newResults.push({
           id: Math.random().toString(36).substr(2, 9),
@@ -464,7 +571,8 @@ export default function Home() {
           Inhalt: "-",
           Typ: "-",
           Status: t.noBarcodeFound,
-          ErrorDetails: err instanceof Error ? err.message : String(err)
+          ErrorDetails: err instanceof Error ? err.message : String(err),
+          ScanDiagnostics: failedDiagnostics
         });
       }
 
@@ -524,7 +632,7 @@ export default function Home() {
   };
 
   const exportResults = async (format = exportFormat) => {
-    const dataToExport = results.map(({ id, ImageID, ErrorDetails, ...rest }) => rest);
+    const dataToExport = results.map(({ id, ImageID, ErrorDetails, ScanDiagnostics, ...rest }) => rest);
 
     if (dataToExport.length === 0) return;
 
@@ -974,6 +1082,32 @@ export default function Home() {
                 <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{t.errorMessage}</p>
                 <p className="mt-1 rounded-xl bg-red-50 p-3 text-sm text-red-700">{errorDetails.row.ErrorDetails}</p>
               </div>
+
+              {errorDetails.row.ScanDiagnostics && (
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{t.diagnosticTitle}</p>
+                  <div className="mt-1 space-y-3 rounded-xl bg-gray-50 p-3 text-sm text-gray-700">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{t.diagnosticBrowser}</p>
+                      <p className="mt-1 break-words">{errorDetails.row.ScanDiagnostics.browser || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{t.diagnosticPath}</p>
+                      <p className="mt-1 break-words">{errorDetails.row.ScanDiagnostics.path || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{t.diagnosticAttempts}</p>
+                      <ul className="mt-1 space-y-1">
+                        {errorDetails.row.ScanDiagnostics.attempts?.map((attempt, index) => (
+                          <li key={`${attempt}-${index}`} className="break-words text-xs text-gray-600">
+                            {attempt}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {errorDetails.image && (
                 <button
