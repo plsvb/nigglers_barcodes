@@ -5,7 +5,77 @@ import { Html5Qrcode } from 'html5-qrcode';
 import Papa from 'papaparse';
 import { Upload, Download, Loader2, CheckCircle, XCircle, Barcode, Trash2, Plus, ZoomIn, X, ChevronDown } from 'lucide-react';
 
+const translations = {
+  de: {
+    appTitle: 'Barcode Scan Tool',
+    appSubtitle: 'Client-seitiger Barcode-Scanner. Deine Bilder bleiben im Browser.',
+    languageLabel: 'Sprache',
+    uploadTitle: 'Bilder hier ablegen oder tippen',
+    uploadSubtitle: 'Unterstuetzt JPG, PNG, BMP und HEIC.',
+    imagesLoaded: 'Bilder geladen',
+    clearAll: 'Alles loeschen',
+    startScan: 'Scan starten',
+    scanning: 'Scanne...',
+    removeImage: 'Bild entfernen',
+    waiting: 'Wartet...',
+    notFound: 'Nicht gefunden',
+    foundCount: 'Codes gefunden',
+    resultsTitle: 'Ergebnisse',
+    addEntry: 'Hinzufuegen',
+    tipTitle: 'Tipp:',
+    tipCheckImages: 'Pruefe kurz die Bilder per Vorschau, ob alle Codes erfasst wurden.',
+    tipEditTable: 'Dateinamen und Barcode-Inhalte koennen direkt in der Tabelle bearbeitet werden.',
+    tipAddMissing: 'Fehlende Codes koennen ueber "Hinzufuegen" manuell ergaenzt werden.',
+    tipDeleteWrong: 'Falsche Eintraege lassen sich ueber das Muelleimer-Symbol loeschen.',
+    tableId: 'ID',
+    tableFileName: 'Dateiname',
+    tableContent: 'Inhalt',
+    tableStatus: 'Status',
+    noResults: 'Keine Ergebnisse.',
+    statusFound: 'Gefunden',
+    statusManual: 'Manuell',
+    statusError: 'Fehler',
+    manualFileName: 'Manuell',
+    noBarcodeFound: 'Kein Barcode gefunden',
+    modalFound: 'Barcodes gefunden',
+  },
+  en: {
+    appTitle: 'Barcode Scan Tool',
+    appSubtitle: 'Client-side barcode scanner. Your images stay in the browser.',
+    languageLabel: 'Language',
+    uploadTitle: 'Drop images here or tap to upload',
+    uploadSubtitle: 'Supports JPG, PNG, BMP and HEIC.',
+    imagesLoaded: 'images loaded',
+    clearAll: 'Clear all',
+    startScan: 'Start scan',
+    scanning: 'Scanning...',
+    removeImage: 'Remove image',
+    waiting: 'Waiting...',
+    notFound: 'Not found',
+    foundCount: 'codes found',
+    resultsTitle: 'Results',
+    addEntry: 'Add entry',
+    tipTitle: 'Tip:',
+    tipCheckImages: 'Quickly review the images in preview mode to confirm all codes were captured.',
+    tipEditTable: 'File names and barcode values can be edited directly in the table.',
+    tipAddMissing: 'Missing codes can be added manually via "Add entry".',
+    tipDeleteWrong: 'Incorrect rows can be removed with the trash icon.',
+    tableId: 'ID',
+    tableFileName: 'File name',
+    tableContent: 'Content',
+    tableStatus: 'Status',
+    noResults: 'No results.',
+    statusFound: 'Found',
+    statusManual: 'Manual',
+    statusError: 'Error',
+    manualFileName: 'Manual',
+    noBarcodeFound: 'No barcode found',
+    modalFound: 'barcodes found',
+  }
+};
+
 export default function Home() {
+  const [language, setLanguage] = useState('de');
   const [images, setImages] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -14,6 +84,7 @@ export default function Home() {
   const [errorDetails, setErrorDetails] = useState(null);
   const [exportFormat, setExportFormat] = useState('csv');
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const t = translations[language];
 
   const handleFileUpload = (event) => {
     const files = Array.from(event.target.files);
@@ -257,7 +328,7 @@ export default function Home() {
 
         updateImageStatus(imgObj.id, { 
             status: 'success', 
-            result: `${codes.length} Codes gefunden`,
+          result: `${codes.length} ${t.foundCount}`,
             detectedCodes: codes,
             width: imgWidth,
             height: imgHeight
@@ -283,7 +354,7 @@ export default function Home() {
           Dateiname: imgObj.file.name,
           Inhalt: "-",
           Typ: "-",
-          Status: "Kein Barcode gefunden"
+          Status: t.noBarcodeFound
         });
       }
 
@@ -323,10 +394,10 @@ export default function Home() {
           ...prev, 
           {
               id: Math.random().toString(36).substr(2, 9),
-              Dateiname: "Manuell",
+              Dateiname: t.manualFileName,
               Inhalt: "",
-              Typ: "Manuell",
-              Status: "Manuell"
+              Typ: t.statusManual,
+              Status: t.statusManual
           }
       ]);
   };
@@ -385,12 +456,29 @@ export default function Home() {
         
         {/* Header */}
         <div className="text-center mb-6 md:mb-10">
+          <div className="mb-4 flex items-center justify-center gap-2 text-sm text-gray-600">
+            <span>{t.languageLabel}</span>
+            <div className="inline-flex rounded-full border border-gray-200 bg-white p-1 shadow-sm">
+              <button
+                onClick={() => setLanguage('de')}
+                className={`rounded-full px-3 py-1 transition-colors ${language === 'de' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              >
+                DE
+              </button>
+              <button
+                onClick={() => setLanguage('en')}
+                className={`rounded-full px-3 py-1 transition-colors ${language === 'en' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              >
+                EN
+              </button>
+            </div>
+          </div>
           <h1 className="text-2xl md:text-4xl font-extrabold text-gray-900 flex flex-col md:flex-row items-center justify-center gap-2 md:gap-3 mb-2">
             <Barcode className="w-8 h-8 md:w-10 md:h-10 text-blue-600" />
-            Niggis Barcode Tool (Web)
+            {t.appTitle}
           </h1>
           <p className="text-sm md:text-base text-gray-600">
-            Client-Side Barcode Scanner - Keine Daten verlassen deinen Browser! 🔒
+            {t.appSubtitle}
           </p>
         </div>
 
@@ -409,8 +497,8 @@ export default function Home() {
               <Upload size={24} className="md:w-8 md:h-8" />
             </div>
             <div>
-              <h3 className="text-base md:text-lg font-semibold text-gray-800">Bilder hier ablegen oder tippen</h3>
-              <p className="text-xs md:text-sm text-gray-500">Unterstützt JPG, PNG, BMP, etc.</p>
+              <h3 className="text-base md:text-lg font-semibold text-gray-800">{t.uploadTitle}</h3>
+              <p className="text-xs md:text-sm text-gray-500">{t.uploadSubtitle}</p>
             </div>
           </div>
         </div>
@@ -423,7 +511,7 @@ export default function Home() {
           <div className="mt-6 md:mt-8 bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
               <div className="text-gray-700 font-medium text-sm md:text-base">
-                {images.length} Bilder geladen
+                {images.length} {t.imagesLoaded}
               </div>
               <div className="flex flex-col-reverse md:flex-row gap-2 md:gap-3 w-full md:w-auto">
                  <button 
@@ -431,7 +519,7 @@ export default function Home() {
                   disabled={isScanning}
                   className="w-full md:w-auto px-4 py-3 md:py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 bg-gray-50 md:bg-transparent rounded-lg transition-colors text-sm font-medium"
                 >
-                  Alles löschen
+                  {t.clearAll}
                 </button>
                 <button 
                   onClick={startScanning}
@@ -441,7 +529,7 @@ export default function Home() {
                   }`}
                 >
                   {isScanning ? <Loader2 className="animate-spin" size={20} /> : <Barcode size={20} />}
-                  {isScanning ? 'Scanne...' : 'Scan starten'}
+                  {isScanning ? t.scanning : t.startScan}
                 </button>
               </div>
             </div>
@@ -508,7 +596,7 @@ export default function Home() {
                          <button 
                             onClick={(e) => { e.stopPropagation(); deleteImage(img.id); }}
                             className="bg-white/80 hover:bg-white text-gray-500 hover:text-red-500 rounded-full p-1 shadow-sm transition-all"
-                            title="Bild entfernen"
+                             title={t.removeImage}
                          >
                              <Trash2 size={16} />
                          </button>
@@ -529,7 +617,7 @@ export default function Home() {
                       <p className="text-green-600 font-mono text-xs mt-1 truncate" title={img.result}>{img.result}</p>
                     ) : (
                       <p className="text-gray-400 text-xs mt-1 italic">
-                        {img.status === 'failed' ? 'Nicht gefunden' : 'Wartet...'}
+                        {img.status === 'failed' ? t.notFound : t.waiting}
                       </p>
                     )}
                   </div>
@@ -543,14 +631,14 @@ export default function Home() {
         {(results.length > 0 || !isScanning) && (
           <div className="mt-8 bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-3">
-              <h2 className="text-xl font-bold text-gray-800 w-full md:w-auto text-center md:text-left">Ergebnisse</h2>
+              <h2 className="text-xl font-bold text-gray-800 w-full md:w-auto text-center md:text-left">{t.resultsTitle}</h2>
                <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                     <button 
                         onClick={addResult}
                         className="flex items-center justify-center gap-2 px-4 py-3 md:py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg font-medium shadow-sm transition-colors w-full sm:w-auto"
                     >
                         <Plus size={18} />
-                        Hinzufügen
+                        {t.addEntry}
                     </button>
                     <div className="relative w-full sm:w-auto">
                         <button 
@@ -590,11 +678,11 @@ export default function Home() {
 
             {/* Info Box */}
             <div className="mb-6 bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-800 flex flex-col gap-1">
-                <p><strong>💡 Tipp:</strong> Prüfe kurz die Bilder (einfach anklicken), ob alle Codes erkannt wurden.</p>
+              <p><strong>{t.tipTitle}</strong> {t.tipCheckImages}</p>
                 <ul className="list-disc list-inside opacity-80 pl-1 text-xs md:text-sm">
-                    <li>Du kannst Dateinamen und Barcode-Inhalte in der Tabelle direkt bearbeiten.</li>
-                    <li>Fehlende Codes kannst du über "Hinzufügen" manuell ergänzen.</li>
-                    <li>Falsche Einträge lassen sich über das Mülleimer-Icon löschen.</li>
+                <li>{t.tipEditTable}</li>
+                <li>{t.tipAddMissing}</li>
+                <li>{t.tipDeleteWrong}</li>
                 </ul>
             </div>
             
@@ -604,10 +692,10 @@ export default function Home() {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th scope="col" className="px-3 py-3 md:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">ID</th>
-                        <th scope="col" className="px-3 py-3 md:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider max-w-[120px] md:max-w-xs">Dateiname</th>
-                        <th scope="col" className="px-3 py-3 md:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Inhalt</th>
-                        <th scope="col" className="px-3 py-3 md:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Status</th>
+                        <th scope="col" className="px-3 py-3 md:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">{t.tableId}</th>
+                        <th scope="col" className="px-3 py-3 md:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider max-w-[120px] md:max-w-xs">{t.tableFileName}</th>
+                        <th scope="col" className="px-3 py-3 md:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t.tableContent}</th>
+                        <th scope="col" className="px-3 py-3 md:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">{t.tableStatus}</th>
                         <th scope="col" className="px-3 py-3 md:px-6 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-16"></th>
                       </tr>
                     </thead>
@@ -615,7 +703,7 @@ export default function Home() {
                       {results.length === 0 ? (
                           <tr>
                               <td colSpan={5} className="px-6 py-8 text-center text-gray-400 italic text-sm">
-                                  Keine Ergebnisse.
+                              {t.noResults}
                               </td>
                           </tr>
                       ) : (
@@ -641,9 +729,9 @@ export default function Home() {
                                 />
                               </td>
                               <td className="px-3 py-3 md:px-6 whitespace-nowrap">
-                                {row.Status === "Gefunden" ? (
+                                {row.Status === "Gefunden" || row.Status === "Found" ? (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">OK</span>
-                                ) : row.Status === "Manuell" ? (
+                                ) : row.Status === "Manuell" || row.Status === "Manual" ? (
                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">Man</span>
                                 ) : (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">ERR</span>
@@ -723,7 +811,7 @@ export default function Home() {
                <div className="bg-white p-4 border-t border-gray-100 flex justify-between items-center shrink-0">
                    <div>
                        <h3 className="font-bold text-gray-800">{previewImage.file.name}</h3>
-                       <p className="text-sm text-gray-500">{previewImage.detectedCodes.length} Barcodes gefunden</p>
+                     <p className="text-sm text-gray-500">{previewImage.detectedCodes.length} {t.modalFound}</p>
                    </div>
                    <div className="font-mono text-xs text-gray-600 max-w-md overflow-hidden text-ellipsis whitespace-nowrap">
                        {previewImage.result}
