@@ -9,7 +9,6 @@ const translations = {
   de: {
     appTitle: 'Barcode Scan Tool',
     appSubtitle: 'Client-seitiger Barcode-Scanner. Deine Bilder bleiben im Browser.',
-    languageLabel: 'Sprache',
     uploadTitle: 'Bilder hier ablegen oder tippen',
     uploadSubtitle: 'Unterstuetzt JPG, PNG, BMP und HEIC.',
     imagesLoaded: 'Bilder geladen',
@@ -48,7 +47,6 @@ const translations = {
   en: {
     appTitle: 'Barcode Scan Tool',
     appSubtitle: 'Client-side barcode scanner. Your images stay in the browser.',
-    languageLabel: 'Language',
     uploadTitle: 'Drop images here or tap to upload',
     uploadSubtitle: 'Supports JPG, PNG, BMP and HEIC.',
     imagesLoaded: 'images loaded',
@@ -245,6 +243,113 @@ export default function Home() {
       return file;
   };
 
+  const loadImageElement = (file) => new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+
+    image.onerror = (error) => {
+      URL.revokeObjectURL(objectUrl);
+      reject(error);
+    };
+
+    image.src = objectUrl;
+  });
+
+  const canvasToFile = (canvas, fileName, mimeType) => new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('Canvas export failed'));
+        return;
+      }
+
+      resolve(new File([blob], fileName, { type: mimeType }));
+    }, mimeType, 0.98);
+  });
+
+  const createRotatedFileVariants = async (file) => {
+    const image = await loadImageElement(file);
+    const rotations = [0, 90, 180, 270];
+    const variants = [];
+    const mimeType = file.type && file.type !== 'image/heic' && file.type !== 'image/heif'
+      ? file.type
+      : 'image/jpeg';
+
+    for (const rotation of rotations) {
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+
+      if (!context) continue;
+
+      if (rotation === 90 || rotation === 270) {
+        canvas.width = image.height;
+        canvas.height = image.width;
+      } else {
+        canvas.width = image.width;
+        canvas.height = image.height;
+      }
+
+      context.save();
+
+      if (rotation === 90) {
+        context.translate(canvas.width, 0);
+        context.rotate(Math.PI / 2);
+      } else if (rotation === 180) {
+        context.translate(canvas.width, canvas.height);
+        context.rotate(Math.PI);
+      } else if (rotation === 270) {
+        context.translate(0, canvas.height);
+        context.rotate(-Math.PI / 2);
+      }
+
+      context.drawImage(image, 0, 0);
+      context.restore();
+
+      variants.push({
+        rotation,
+        file: await canvasToFile(canvas, file.name, mimeType),
+        width: canvas.width,
+        height: canvas.height,
+      });
+    }
+
+    return variants;
+  };
+
+  const scanFileWithFallbacks = async (file, scanner) => {
+    try {
+      const directResult = await scanner.scanFile(file, false);
+      const image = await loadImageElement(file);
+
+      return {
+        codes: [{ text: directResult, box: null }],
+        width: image.width,
+        height: image.height,
+      };
+    } catch (directError) {
+      const variants = await createRotatedFileVariants(file);
+
+      for (const variant of variants) {
+        try {
+          const rotatedResult = await scanner.scanFile(variant.file, false);
+          return {
+            codes: [{ text: rotatedResult, box: null }],
+            width: variant.width,
+            height: variant.height,
+          };
+        } catch (variantError) {
+          console.warn(`Rotation ${variant.rotation} scan failed`, variantError);
+        }
+      }
+
+      throw directError;
+    }
+  };
+
   const startScanning = async () => {
     setIsScanning(true);
     setProgress(0);
@@ -294,19 +399,10 @@ export default function Home() {
         if (codes.length === 0) {
              if (!html5QrCode) html5QrCode = new Html5Qrcode("reader-hidden");
              try {
-                // Use the PROCESSED file (JPEG instead of HEIC)
-                const result = await html5QrCode.scanFile(processingFile, false);
-                
-                if (imgWidth === 0) {
-                   const img = new Image();
-                   await new Promise((resolve) => {
-                       img.onload = resolve;
-                       img.src = URL.createObjectURL(processingFile);
-                   });
-                   imgWidth = img.width;
-                   imgHeight = img.height;
-                }
-                codes = [{ text: result, box: null }];
+               const fallbackResult = await scanFileWithFallbacks(processingFile, html5QrCode);
+               codes = fallbackResult.codes;
+               imgWidth = fallbackResult.width;
+               imgHeight = fallbackResult.height;
              } catch (e) {
                 // Last ditch effort for dimensions
                 if (imgWidth === 0) {
@@ -478,27 +574,26 @@ export default function Home() {
         
         {/* Header */}
         <div className="text-center mb-6 md:mb-10">
-          <div className="mb-4 flex items-center justify-center gap-2 text-sm text-gray-600">
-            <span>{t.languageLabel}</span>
+          <div className="mb-2 flex flex-col items-center justify-center gap-3 md:flex-row md:gap-4">
+            <h1 className="text-2xl md:text-4xl font-extrabold text-gray-900 flex flex-col md:flex-row items-center justify-center gap-2 md:gap-3">
+            <Barcode className="w-8 h-8 md:w-10 md:h-10 text-blue-600" />
+            {t.appTitle}
+            </h1>
             <div className="inline-flex rounded-full border border-gray-200 bg-white p-1 shadow-sm">
               <button
                 onClick={() => setLanguage('de')}
-                className={`rounded-full px-3 py-1 transition-colors ${language === 'de' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`rounded-full px-3 py-1 text-sm transition-colors ${language === 'de' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
               >
                 DE
               </button>
               <button
                 onClick={() => setLanguage('en')}
-                className={`rounded-full px-3 py-1 transition-colors ${language === 'en' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`rounded-full px-3 py-1 text-sm transition-colors ${language === 'en' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
               >
                 EN
               </button>
             </div>
           </div>
-          <h1 className="text-2xl md:text-4xl font-extrabold text-gray-900 flex flex-col md:flex-row items-center justify-center gap-2 md:gap-3 mb-2">
-            <Barcode className="w-8 h-8 md:w-10 md:h-10 text-blue-600" />
-            {t.appTitle}
-          </h1>
           <p className="text-sm md:text-base text-gray-600">
             {t.appSubtitle}
           </p>
