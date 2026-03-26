@@ -279,50 +279,99 @@ export default function Home() {
     }, mimeType, 0.98);
   });
 
-  const createRotatedFileVariants = async (file) => {
+  const applyImageMode = (canvas, context, mode) => {
+    if (mode === 'original') return;
+
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    const { data } = imageData;
+
+    for (let index = 0; index < data.length; index += 4) {
+      const red = data[index];
+      const green = data[index + 1];
+      const blue = data[index + 2];
+      const luminance = (0.299 * red) + (0.587 * green) + (0.114 * blue);
+
+      if (mode === 'grayscale') {
+        data[index] = luminance;
+        data[index + 1] = luminance;
+        data[index + 2] = luminance;
+        continue;
+      }
+
+      if (mode === 'contrast') {
+        const contrast = 1.45;
+        const adjusted = Math.max(0, Math.min(255, ((luminance - 128) * contrast) + 128));
+        data[index] = adjusted;
+        data[index + 1] = adjusted;
+        data[index + 2] = adjusted;
+        continue;
+      }
+
+      if (mode === 'threshold') {
+        const threshold = luminance > 140 ? 255 : 0;
+        data[index] = threshold;
+        data[index + 1] = threshold;
+        data[index + 2] = threshold;
+      }
+    }
+
+    context.putImageData(imageData, 0, 0);
+  };
+
+  const createFallbackFileVariants = async (file) => {
     const image = await loadImageElement(file);
     const rotations = [0, 90, 180, 270];
+    const modes = ['original', 'grayscale', 'contrast', 'threshold'];
     const variants = [];
     const mimeType = file.type && file.type !== 'image/heic' && file.type !== 'image/heif'
       ? file.type
       : 'image/jpeg';
 
-    for (const rotation of rotations) {
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
+    for (const mode of modes) {
+      for (const rotation of rotations) {
+        if (mode !== 'original' && rotation !== 0 && rotation !== 90) continue;
 
-      if (!context) continue;
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d', { willReadFrequently: true });
 
-      if (rotation === 90 || rotation === 270) {
-        canvas.width = image.height;
-        canvas.height = image.width;
-      } else {
-        canvas.width = image.width;
-        canvas.height = image.height;
+        if (!context) continue;
+
+        if (rotation === 90 || rotation === 270) {
+          canvas.width = image.height;
+          canvas.height = image.width;
+        } else {
+          canvas.width = image.width;
+          canvas.height = image.height;
+        }
+
+        context.save();
+
+        if (rotation === 90) {
+          context.translate(canvas.width, 0);
+          context.rotate(Math.PI / 2);
+        } else if (rotation === 180) {
+          context.translate(canvas.width, canvas.height);
+          context.rotate(Math.PI);
+        } else if (rotation === 270) {
+          context.translate(0, canvas.height);
+          context.rotate(-Math.PI / 2);
+        }
+
+        context.drawImage(image, 0, 0);
+        context.restore();
+
+        applyImageMode(canvas, context, mode);
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+
+        variants.push({
+          mode,
+          rotation,
+          file: await canvasToFile(canvas, file.name, mimeType),
+          imageData,
+          width: canvas.width,
+          height: canvas.height,
+        });
       }
-
-      context.save();
-
-      if (rotation === 90) {
-        context.translate(canvas.width, 0);
-        context.rotate(Math.PI / 2);
-      } else if (rotation === 180) {
-        context.translate(canvas.width, canvas.height);
-        context.rotate(Math.PI);
-      } else if (rotation === 270) {
-        context.translate(0, canvas.height);
-        context.rotate(-Math.PI / 2);
-      }
-
-      context.drawImage(image, 0, 0);
-      context.restore();
-
-      variants.push({
-        rotation,
-        file: await canvasToFile(canvas, file.name, mimeType),
-        width: canvas.width,
-        height: canvas.height,
-      });
     }
 
     return variants;
@@ -341,8 +390,62 @@ export default function Home() {
     return navigator.userAgent;
   };
 
+  const getBoundingBoxFromPoints = (points = []) => {
+    if (!points.length) return null;
+
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  };
+
+  const scanWithZbarFallbacks = async (variants, diagnostics) => {
+    const zbarWasm = await import('@undecaf/zbar-wasm');
+
+    for (const variant of variants) {
+      try {
+        diagnostics.attempts.push(`zbar: ${variant.mode} ${variant.rotation}deg scan`);
+        const symbols = await zbarWasm.scanImageData(variant.imageData);
+
+        if (!symbols.length) {
+          diagnostics.attempts.push(`zbar: ${variant.mode} ${variant.rotation}deg found no symbols`);
+          continue;
+        }
+
+        return {
+          codes: symbols.map((symbol) => ({
+            text: symbol.decode(),
+            box: getBoundingBoxFromPoints(symbol.points),
+          })),
+          width: variant.width,
+          height: variant.height,
+          diagnostics: {
+            ...diagnostics,
+            path: `zbar: ${variant.mode} ${variant.rotation}deg scan`,
+            successPath: `zbar: ${variant.mode} ${variant.rotation}deg scan`,
+          },
+        };
+      } catch (error) {
+        diagnostics.attempts.push(`zbar: ${variant.mode} ${variant.rotation}deg failed (${error?.message || error})`);
+        console.warn(`ZBar ${variant.mode} ${variant.rotation}deg scan failed`, error);
+      }
+    }
+
+    return null;
+  };
+
   const scanFileWithFallbacks = async (file, scanner) => {
     const diagnostics = {
+      browser: getBrowserLabel(),
       path: 'html5-qrcode',
       attempts: ['html5-qrcode: direct file scan'],
     };
@@ -362,11 +465,11 @@ export default function Home() {
       };
     } catch (directError) {
       diagnostics.attempts.push(`html5-qrcode: direct scan failed (${directError?.message || directError})`);
-      const variants = await createRotatedFileVariants(file);
+      const variants = await createFallbackFileVariants(file);
 
       for (const variant of variants) {
         try {
-          diagnostics.attempts.push(`html5-qrcode: rotated ${variant.rotation}deg scan`);
+          diagnostics.attempts.push(`html5-qrcode: ${variant.mode} ${variant.rotation}deg scan`);
           const rotatedResult = await scanner.scanFile(variant.file, false);
           return {
             codes: [{ text: rotatedResult, box: null }],
@@ -374,13 +477,18 @@ export default function Home() {
             height: variant.height,
             diagnostics: {
               ...diagnostics,
-              successPath: `html5-qrcode: rotated ${variant.rotation}deg scan`,
+              successPath: `html5-qrcode: ${variant.mode} ${variant.rotation}deg scan`,
             },
           };
         } catch (variantError) {
-          diagnostics.attempts.push(`html5-qrcode: rotated ${variant.rotation}deg failed (${variantError?.message || variantError})`);
-          console.warn(`Rotation ${variant.rotation} scan failed`, variantError);
+          diagnostics.attempts.push(`html5-qrcode: ${variant.mode} ${variant.rotation}deg failed (${variantError?.message || variantError})`);
+          console.warn(`Variant ${variant.mode} ${variant.rotation}deg scan failed`, variantError);
         }
+      }
+
+      const zbarResult = await scanWithZbarFallbacks(variants, diagnostics);
+      if (zbarResult) {
+        return zbarResult;
       }
 
       directError.scanDiagnostics = diagnostics;
