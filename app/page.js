@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import Papa from 'papaparse';
-import { Upload, Download, Loader2, CheckCircle, XCircle, Barcode, Trash2, Plus, ZoomIn, X } from 'lucide-react';
+import { Upload, Download, Loader2, CheckCircle, XCircle, Barcode, Trash2, Plus, ZoomIn, X, ChevronDown } from 'lucide-react';
 
 export default function Home() {
   const [images, setImages] = useState([]);
@@ -11,6 +11,9 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState([]);
   const [previewImage, setPreviewImage] = useState(null);
+  const [errorDetails, setErrorDetails] = useState(null);
+  const [exportFormat, setExportFormat] = useState('csv');
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const handleFileUpload = (event) => {
     const files = Array.from(event.target.files);
@@ -328,20 +331,46 @@ export default function Home() {
       ]);
   };
 
-  const downloadCSV = () => {
-    // Exclude internal IDs from CSV
-    const dataToExport = results.map(({ id, ImageID, ...rest }) => rest);
-    const csv = Papa.unparse(dataToExport);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const triggerBlobDownload = (blob, fileName) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', 'barcode_liste.csv');
+    link.setAttribute('download', fileName);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
+  const exportResults = async (format = exportFormat) => {
+    const dataToExport = results.map(({ id, ImageID, ...rest }) => rest);
+
+    if (dataToExport.length === 0) return;
+
+    if (format === 'csv') {
+      const csv = Papa.unparse(dataToExport);
+      triggerBlobDownload(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), 'barcode_liste.csv');
+    }
+
+    if (format === 'tsv') {
+      const tsv = Papa.unparse(dataToExport, { delimiter: '\t' });
+      triggerBlobDownload(new Blob([tsv], { type: 'text/tab-separated-values;charset=utf-8;' }), 'barcode_liste.tsv');
+    }
+
+    if (format === 'xlsx') {
+      const XLSX = await import('xlsx');
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Barcodes');
+      XLSX.writeFile(workbook, 'barcode_liste.xlsx');
+    }
+
+    setExportFormat(format);
+    setShowExportMenu(false);
+  };
+
+
+  const exportLabel = exportFormat.toUpperCase();
 
   const clearAll = () => {
     setImages([]);
@@ -523,14 +552,39 @@ export default function Home() {
                         <Plus size={18} />
                         Hinzufügen
                     </button>
-                    <button 
-                        onClick={downloadCSV}
-                        disabled={results.length === 0}
-                        className="flex items-center justify-center gap-2 px-4 py-3 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
-                    >
-                        <Download size={18} />
-                        CSV
-                    </button>
+                    <div className="relative w-full sm:w-auto">
+                        <button 
+                            onClick={() => setShowExportMenu(prev => !prev)}
+                            disabled={results.length === 0}
+                            className="flex items-center justify-center gap-2 px-4 py-3 md:py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+                        >
+                            <Download size={18} />
+                            {exportLabel}
+                            <ChevronDown size={16} className={`transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+                        </button>
+                        {showExportMenu && results.length > 0 && (
+                          <div className="absolute right-0 z-20 mt-2 w-full min-w-[180px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg sm:w-auto">
+                            <button
+                              onClick={() => exportResults('csv')}
+                              className="block w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                              CSV
+                            </button>
+                            <button
+                              onClick={() => exportResults('tsv')}
+                              className="block w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                              TSV
+                            </button>
+                            <button
+                              onClick={() => exportResults('xlsx')}
+                              className="block w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                              XLSX
+                            </button>
+                          </div>
+                        )}
+                    </div>
               </div>
             </div>
 
