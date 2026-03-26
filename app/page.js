@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import Papa from 'papaparse';
-import heic2any from 'heic2any'; // Import for HEIC conversion
 import { Upload, Download, Loader2, CheckCircle, XCircle, Barcode, Trash2, Plus, ZoomIn, X } from 'lucide-react';
 
 export default function Home() {
@@ -134,6 +133,9 @@ export default function Home() {
       // Check if file is HEIC
       if (file.type === "image/heic" || file.type === "image/heif" || file.name.toLowerCase().endsWith('.heic')) {
           try {
+              // Dynamically import heic2any only on client side
+              const heic2any = (await import('heic2any')).default;
+              
               console.log(`Converting HEIC: ${file.name}`);
               const convertedBlob = await heic2any({
                   blob: file,
